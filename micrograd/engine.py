@@ -1,37 +1,51 @@
 from collections import deque
-from typing import Self
+from dataclasses import dataclass, field
+from itertools import count
+from typing import Callable, Self
+
+ID_CREATOR = count().__next__
 
 
+def default_backward_fun():
+    pass
+
+
+@dataclass
 class Value:
-    def __init__(self, data: float, parents: tuple[Self, ...] = (), ops=''):
-        self.data = data
-        self.grad = 0
+    id: int = field(init=False, default_factory=ID_CREATOR, repr=False)
+    data: float
+    parents: tuple[Self, ...] = field(repr=False, default=())
+    ops: str = field(repr=False, default='')
 
-        self._backward = lambda: None
-        self._prev = set(parents)
-        self.ops = ops  # the op that produced this node, for graphviz / debugging / etc
+    grad: float = field(init=False, default=0)
+    update_grad: Callable[[], None] = field(init=False, repr=False)
+
+    def __post_init__(self):
+        self.update_grad = default_backward_fun
 
     def __add__(self, other: Self | float) -> Self:
-        other = other if isinstance(other, Value) else Value(other)
+        other = self.to_value(other)
+
         out = Value(self.data + other.data, (self, other), '+')
 
-        def _backward():
+        def update_grad():
+            # for understanding grad in more detail; https://colah.github.io/posts/2015-08-Backprop/
             self.grad += out.grad
             other.grad += out.grad
 
-        out._backward = _backward
+        out.update_grad = update_grad
 
         return out
 
     def __mul__(self, other: Self | float) -> Self:
-        other = other if isinstance(other, Value) else Value(other)
+        other = self.to_value(other)
         out = Value(self.data * other.data, (self, other), '*')
 
-        def _backward():
+        def update_grad():
             self.grad += other.data * out.grad
             other.grad += self.data * out.grad
 
-        out._backward = _backward
+        out.update_grad = update_grad
 
         return out
 
@@ -39,43 +53,43 @@ class Value:
         assert isinstance(p, (int, float)), "only supporting int/float powers for now"
         out = Value(self.data ** p, (self,), f'**{p}')
 
-        def _backward():
+        def update_grad():
             self.grad += (p * self.data ** (p - 1)) * out.grad
 
-        out._backward = _backward
+        out.update_grad = update_grad
 
         return out
 
     def relu(self) -> Self:
         out = Value(max(0., self.data), (self,), 'ReLU')
 
-        def _backward():
+        def update_grad():
             self.grad += (out.data > 0) * out.grad
 
-        out._backward = _backward
+        out.update_grad = update_grad
 
         return out
 
-    def backward(self, dx=1):
-        topo = deque()
+    def backward(self):
+        stk = deque()
         visited_nodes = set()
 
-        def build_topo(node: Value):
-            if node not in visited_nodes:
-                visited_nodes.add(node)
+        def build_topo(child: Value):
+            if child not in visited_nodes:
+                visited_nodes.add(child)
 
-                for parent in node._prev:
+                for parent in child.parents:
                     build_topo(parent)
 
-                topo.append(node)
+                stk.appendleft(child)
 
         build_topo(self)
 
         # go one variable at a time and apply the chain rule to get its gradient
-        self.grad = dx
+        self.grad = 1
 
-        for v in reversed(topo):
-            v._backward()
+        for v in stk:
+            v.update_grad()
 
     def __neg__(self) -> Self:  # -self
         return self * -1
@@ -98,5 +112,16 @@ class Value:
     def __rtruediv__(self, other: Self | float) -> Self:  # other / self
         return other * self ** -1
 
-    def __repr__(self):
-        return f"Value(data={self.data}, grad={self.grad})"
+    # overriding eq and hash function as required for topological sorting
+    def __eq__(self, other) -> bool:
+        return isinstance(other, Value) and other.id == self.id
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+    @staticmethod
+    def to_value(x: float) -> 'Value':
+        if not isinstance(x, Value):
+            x = Value(x)
+
+        return x

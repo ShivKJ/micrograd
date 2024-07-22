@@ -1,5 +1,6 @@
 import random
 from abc import abstractmethod
+from functools import cached_property
 from operator import mul
 
 from micrograd.engine import Value
@@ -7,9 +8,10 @@ from micrograd.engine import Value
 
 class Module:
     def zero_grad(self):
-        for p in self.parameters():
+        for p in self.parameters:
             p.grad = 0
 
+    @cached_property
     @abstractmethod
     def parameters(self) -> list[Value]:
         pass
@@ -26,6 +28,7 @@ class Neuron(Module):
 
         return act.relu() if self.nonlin else act
 
+    @cached_property
     def parameters(self) -> list[Value]:
         return self.w + [self.b]
 
@@ -41,8 +44,9 @@ class Layer(Module):
         out = [n(x) for n in self.neurons]
         return out[0] if len(out) == 1 else out
 
+    @cached_property
     def parameters(self) -> list[Value]:
-        return [p for n in self.neurons for p in n.parameters()]
+        return [p for n in self.neurons for p in n.parameters]
 
     def __repr__(self):
         return f"Layer of [{', '.join(str(n) for n in self.neurons)}]"
@@ -59,8 +63,9 @@ class MLP(Module):
             x = layer(x)
         return x
 
+    @cached_property
     def parameters(self):
-        return [p for layer in self.layers for p in layer.parameters()]
+        return [p for layer in self.layers for p in layer.parameters]
 
     def __repr__(self):
         return f"MLP of [{', '.join(str(layer) for layer in self.layers)}]"
