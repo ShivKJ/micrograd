@@ -1,8 +1,9 @@
 import torch
+
 from micrograd.engine import Value
 
-def test_sanity_check():
 
+def test_sanity_check():
     x = Value(-4.0)
     z = 2 * x + 2 + x
     q = z.relu() + z * x
@@ -25,39 +26,36 @@ def test_sanity_check():
     # backward pass went well
     assert xmg.grad == xpt.grad.item()
 
-def test_more_ops():
 
-    a = Value(-4.0)
-    b = Value(2.0)
+def evaluate(a, b):
     c = a + b
-    d = a * b + b**3
+    d = a * b + b ** 3
     c += c + 1
     c += 1 + c + (-a)
     d += d * 2 + (b + a).relu()
     d += 3 * d + (b - a).relu()
     e = c - d
-    f = e**2
+    f = e ** 2
     g = f / 2.0
     g += 10.0 / f
+
     g.backward()
-    amg, bmg, gmg = a, b, g
+
+    return a, b, g
+
+
+def test_more_ops():
+    a = Value(-4.0)
+    b = Value(2.0)
+
+    amg, bmg, gmg = evaluate(a, b)
 
     a = torch.Tensor([-4.0]).double()
     b = torch.Tensor([2.0]).double()
     a.requires_grad = True
     b.requires_grad = True
-    c = a + b
-    d = a * b + b**3
-    c = c + c + 1
-    c = c + 1 + c + (-a)
-    d = d + d * 2 + (b + a).relu()
-    d = d + 3 * d + (b - a).relu()
-    e = c - d
-    f = e**2
-    g = f / 2.0
-    g = g + 10.0 / f
-    g.backward()
-    apt, bpt, gpt = a, b, g
+
+    apt, bpt, gpt = evaluate(a, b)
 
     tol = 1e-6
     # forward pass went well

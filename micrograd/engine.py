@@ -1,6 +1,7 @@
 from collections import deque
 from dataclasses import dataclass, field
 from itertools import count
+from math import exp
 from typing import Callable, Self
 
 ID_CREATOR = count().__next__
@@ -12,13 +13,13 @@ def default_backward_fun():
 
 @dataclass
 class Value:
-    id: int = field(init=False, default_factory=ID_CREATOR, repr=False)
+    id: int = field(init=False, default_factory=ID_CREATOR)
     data: float
-    parents: tuple[Self, ...] = field(repr=False, default=())
-    ops: str = field(repr=False, default='')
+    parents: tuple[Self, ...] = ()
+    ops: str = ''
 
     grad: float = field(init=False, default=0)
-    update_grad: Callable[[], None] = field(init=False, repr=False)
+    update_grad: Callable[[], None] = field(init=False)
 
     def __post_init__(self):
         self.update_grad = default_backward_fun
@@ -65,6 +66,17 @@ class Value:
 
         def update_grad():
             self.grad += (out.data > 0) * out.grad
+
+        out.update_grad = update_grad
+
+        return out
+
+    def sigmoid(self) -> Self:
+        z = 1 / (1 + exp(-self.data))
+        out = Value(z, (self,), 'Sigmoid')
+
+        def update_grad():
+            self.grad += z * (1 - z) * out.grad
 
         out.update_grad = update_grad
 
@@ -118,6 +130,12 @@ class Value:
 
     def __hash__(self) -> int:
         return hash(self.id)
+
+    def __repr__(self) -> str:
+        if self.ops:
+            return f'Value(data={round(self.data, 3)}, grad={round(self.grad, 3)}, grad_fn={self.ops})'
+        else:
+            return f'Value(data={round(self.data, 3)}, grad={round(self.grad, 3)})'
 
     @staticmethod
     def to_value(x: float) -> 'Value':
