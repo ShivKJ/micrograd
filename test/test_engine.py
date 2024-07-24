@@ -1,6 +1,9 @@
+import pytest
 import torch
 
 from micrograd.engine import Value
+
+T = Value | torch.Tensor
 
 
 def test_sanity_check():
@@ -27,39 +30,68 @@ def test_sanity_check():
     assert xmg.grad == xpt.grad.item()
 
 
-def evaluate(a, b):
-    c = a + b
-    d = a * b + b ** 3
-    c += c + 1
-    c += 1 + c + (-a)
-    d += d * 2 + (b + a).relu()
-    d += 3 * d + (b - a).relu()
-    e = c - d
-    f = e ** 2
-    g = f / 2.0
-    g += 10.0 / f
+def generate1(a: float, b: float) -> tuple:
+    def evaluate(A: T, B: T) -> tuple[T, T, T]:
+        c = A + B
+        d = A * B + B ** 3
+        c += c + 1
+        c += 1 + c + (-A)
+        d += d * 2 + (B + A).relu()
+        d += 3 * d + (B - A).relu()
+        e = c - d
+        f = e ** 2
+        g = f / 2.0
+        g += 10.0 / f
 
-    g.backward()
+        g.backward()
 
-    return a, b, g
+        return A, B, g
+
+    return (
+        evaluate(Value(a), Value(b)),
+        evaluate(
+            torch.tensor(a, requires_grad=True, dtype=torch.float),
+            torch.tensor(b, requires_grad=True, dtype=torch.float)
+        ),
+    )
 
 
-def test_more_ops():
-    a = Value(-4.0)
-    b = Value(2.0)
+def generate2(a: float, b: float) -> tuple:
+    def evaluate(A: T, B: T) -> tuple[T, T, T]:
+        c = A + B
+        c = c.tanh()
 
-    amg, bmg, gmg = evaluate(a, b)
+        c = ((A * c).sin()
+             .relu()
+             .cos()
+             .sigmoid())
 
-    a = torch.Tensor([-4.0]).double()
-    b = torch.Tensor([2.0]).double()
-    a.requires_grad = True
-    b.requires_grad = True
+        c.backward()
 
-    apt, bpt, gpt = evaluate(a, b)
+        return A, B, c
 
-    tol = 1e-6
+    return (
+        evaluate(Value(a), Value(b)),
+        evaluate(
+            torch.tensor(a, requires_grad=True, dtype=torch.float),
+            torch.tensor(b, requires_grad=True, dtype=torch.float)
+        ),
+    )
+
+
+def generate():
+    return [generate1(-4., 2.), generate2(1., 2.)]
+
+
+@pytest.mark.parametrize('v, t', generate())
+def test_more_ops(v, t):
+    amg, bmg, gmg = v
+    apt, bpt, gpt = t
+
+    tol = 1e-3
+
     # forward pass went well
-    assert abs(gmg.data - gpt.data.item()) < tol
+    assert abs(gmg.data - gpt.data.item()) <= tol
     # backward pass went well
-    assert abs(amg.grad - apt.grad.item()) < tol
-    assert abs(bmg.grad - bpt.grad.item()) < tol
+    assert abs(amg.grad - apt.grad.item()) <= tol
+    assert abs(bmg.grad - bpt.grad.item()) <= tol

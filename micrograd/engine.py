@@ -1,7 +1,7 @@
 from collections import deque
 from dataclasses import dataclass, field
 from itertools import count
-from math import exp
+from math import cos, exp, sin
 from typing import Callable, Self
 
 ID_CREATOR = count().__next__
@@ -62,10 +62,37 @@ class Value:
         return out
 
     def relu(self) -> Self:
-        out = Value(max(0., self.data), (self,), 'ReLU')
+        return self.leaky_relu(0, 'ReLU')
+
+    def leaky_relu(self, s: float = 0.01, name='LeakyRelu') -> Self:
+        assert 0 <= s <= 1
+
+        f = 1 if self.data > 0 else s
+
+        out = Value(self.data * f, (self,), name)
 
         def update_grad():
-            self.grad += (out.data > 0) * out.grad
+            self.grad += f * out.grad
+
+        out.update_grad = update_grad
+
+        return out
+
+    def sin(self) -> Self:
+        out = Value(sin(self.data), (self,), 'Sin')
+
+        def update_grad():
+            self.grad += cos(self.data) * out.grad
+
+        out.update_grad = update_grad
+
+        return out
+
+    def cos(self) -> Self:
+        out = Value(cos(self.data), (self,), 'Cos')
+
+        def update_grad():
+            self.grad += -sin(self.data) * out.grad
 
         out.update_grad = update_grad
 
@@ -73,10 +100,23 @@ class Value:
 
     def sigmoid(self) -> Self:
         z = 1 / (1 + exp(-self.data))
+
         out = Value(z, (self,), 'Sigmoid')
 
         def update_grad():
             self.grad += z * (1 - z) * out.grad
+
+        out.update_grad = update_grad
+
+        return out
+
+    def tanh(self) -> Self:
+        z = exp(self.data)
+        z = (z - 1 / z) / (z + 1 / z)
+        out = Value(z, (self,), 'Tanh')
+
+        def update_grad():
+            self.grad += (1 - z * z) * out.grad
 
         out.update_grad = update_grad
 
