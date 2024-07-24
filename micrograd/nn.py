@@ -18,27 +18,37 @@ class Module:
 
 
 class Neuron(Module):
-    def __init__(self, nin: int, nonlin=True):
+    def __init__(self, nin: int, activation='ReLU'):
         self.w = [Value(random.uniform(-1, 1)) for _ in range(nin)]
         self.b = Value(0)
-        self.nonlin = nonlin
+        self.activation = activation
 
     def __call__(self, x: list[float]) -> Value:
         act = sum(map(mul, self.w, x)) + self.b
 
-        return act.relu() if self.nonlin else act
+        match self.activation:
+            case None | '':
+                return act
+            case 'ReLU':
+                return act.relu()
+            case 'Sigmoid':
+                return act.sigmoid()
+            case 'Tanh':
+                return act.tanh()
+            case _:
+                raise ValueError(f'activation function={self.activation} is not recognised')
 
     @cached_property
     def parameters(self) -> list[Value]:
         return self.w + [self.b]
 
     def __repr__(self):
-        return f"{'ReLU' if self.nonlin else 'Linear'}Neuron({len(self.w)})"
+        return f"{'ReLU' if self.activation else 'Linear'}-Neuron({len(self.w)})"
 
 
 class Layer(Module):
-    def __init__(self, nin: int, nout: int, **kwargs):
-        self.neurons = [Neuron(nin, **kwargs) for _ in range(nout)]
+    def __init__(self, n_in: int, n_out: int, **kwargs):
+        self.neurons = [Neuron(n_in, **kwargs) for _ in range(n_out)]
 
     def __call__(self, x: list[float]):
         out = [n(x) for n in self.neurons]
@@ -53,10 +63,12 @@ class Layer(Module):
 
 
 class MLP(Module):
+    def __init__(self, n_in: int, n_outs: list[int]):
+        sz = [n_in] + n_outs
+        last_layer_index = len(n_outs) - 1
 
-    def __init__(self, nin: int, nouts: list[int]):
-        sz = [nin] + nouts
-        self.layers = [Layer(sz[i], sz[i + 1], nonlin=i != len(nouts) - 1) for i in range(len(nouts))]
+        self.layers = [Layer(sz[i], sz[i + 1], activation='ReLU' if i != last_layer_index else None)
+                       for i in range(len(n_outs))]
 
     def __call__(self, x: list[float]) -> list[float]:
         for layer in self.layers:

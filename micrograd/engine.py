@@ -19,22 +19,22 @@ class Value:
     ops: str = ''
 
     grad: float = field(init=False, default=0)
-    update_grad: Callable[[], None] = field(init=False)
+    grad_fn: Callable[[], None] = field(init=False)
 
     def __post_init__(self):
-        self.update_grad = default_backward_fun
+        self.grad_fn = default_backward_fun
 
     def __add__(self, other: Self | float) -> Self:
         other = self.to_value(other)
 
         out = Value(self.data + other.data, (self, other), '+')
 
-        def update_grad():
+        def grad_fn():
             # for understanding grad in more detail; https://colah.github.io/posts/2015-08-Backprop/
             self.grad += out.grad
             other.grad += out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
@@ -42,11 +42,11 @@ class Value:
         other = self.to_value(other)
         out = Value(self.data * other.data, (self, other), '*')
 
-        def update_grad():
+        def grad_fn():
             self.grad += other.data * out.grad
             other.grad += self.data * out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
@@ -54,10 +54,10 @@ class Value:
         assert isinstance(p, (int, float)), "only supporting int/float powers for now"
         out = Value(self.data ** p, (self,), f'**{p}')
 
-        def update_grad():
+        def grad_fn():
             self.grad += (p * self.data ** (p - 1)) * out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
@@ -71,30 +71,30 @@ class Value:
 
         out = Value(self.data * f, (self,), name)
 
-        def update_grad():
+        def grad_fn():
             self.grad += f * out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
     def sin(self) -> Self:
         out = Value(sin(self.data), (self,), 'Sin')
 
-        def update_grad():
+        def grad_fn():
             self.grad += cos(self.data) * out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
     def cos(self) -> Self:
         out = Value(cos(self.data), (self,), 'Cos')
 
-        def update_grad():
+        def grad_fn():
             self.grad += -sin(self.data) * out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
@@ -103,10 +103,10 @@ class Value:
 
         out = Value(z, (self,), 'Sigmoid')
 
-        def update_grad():
+        def grad_fn():
             self.grad += z * (1 - z) * out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
@@ -115,10 +115,10 @@ class Value:
         z = (z - 1 / z) / (z + 1 / z)
         out = Value(z, (self,), 'Tanh')
 
-        def update_grad():
+        def grad_fn():
             self.grad += (1 - z * z) * out.grad
 
-        out.update_grad = update_grad
+        out.grad_fn = grad_fn
 
         return out
 
@@ -141,7 +141,7 @@ class Value:
         self.grad = 1
 
         for v in stk:
-            v.update_grad()
+            v.grad_fn()
 
     def __neg__(self) -> Self:  # -self
         return self * -1
